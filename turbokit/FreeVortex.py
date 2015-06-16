@@ -94,7 +94,7 @@ class FreeVortex(object):
 		"""Remove target case directory and copy OpenFOAM case template."""
 		print("Copying OpenFOAM case %s from template %s" % 
 		       (self.casename, self.case_template))
-		shutil.rmtree(self.casename)
+		shutil.rmtree(self.casename, ignore_errors=True)
 		shutil.copytree(self.case_template, self.casename)
 	
 	def makeMeridionalPatch(self):
