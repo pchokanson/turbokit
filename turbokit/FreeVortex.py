@@ -19,8 +19,8 @@ except:
 import PyFoam as pf
 from PyFoam.RunDictionary.ParsedParameterFile import ParsedParameterFile
 
-
 from Splines import *
+from MeridionalPatchSpline import MeridionalPatchSpline
 
 def loadPatchVectorSamples(sampleFile):
 	with open(sampleFile) as csvfile:
@@ -40,11 +40,13 @@ class FreeVortex(object):
 	              casename="cases/freevortex",
 	              compressible=False,
 	              rho=1e3,
-	              inlet_s0=np.array([3e-3, 7e-3]),
-	              inlet_s1=np.array([7.8e-3, 7e-3]),
+	              meridional_patch = MeridionalPatchSpline(np.array([3e-3, 7e-3]), 
+	                                                       np.array([7.8e-3, 7e-3]),
+	                                                       np.array([12.8e-3, 0.0]),
+	                                                       np.array([12.8e-3, 2.0e-3]), 
+	                                                       np.array([0.0, -39.6]),
+	                                                       np.array([39.63, 0.0])),
 	              inlet_v=np.array([0.0, 0.0, -39.6]),
-	              outlet_s0=np.array([12.8e-3, 0.0]),
-	              outlet_s1=np.array([12.8e-3, 2.0e-3]),
 	              outlet_v=np.array([39.63, -19.15, 0.0]),
 	              points_m = 40,
 	              points_s = 20):
@@ -53,11 +55,8 @@ class FreeVortex(object):
 		Keyword arguments:
 		casename -- directory to create for OpenFOAM files
 		rho -- fluid density in kg/m^3
-		inlet_s0 -- numpy array specifying (r, z) coordinates at inner edge of inlet
-		inlet_s1 -- numpy array specifying (r, z) coordinates at outer edge of inlet
+		meridional_patch -- Meridional patch object representing the flowfield region
 		inlet_v -- numpy array specifying (r, th, z) velocity (uniform) at inlet
-		outlet_s0 -- numpy array specifying (r, z) coordinates at inner edge of outlet
-		outlet_s1 -- numpy array specifying (r, z) coordinates at outer edge of outlet
 		outlet_v -- numpy array specifying (r, th, z) velocity (uniform) at outlet
 		points_m -- number of vertices in the meridional direction (inlet to outlet)
 		points_s -- number of vertices in the shroud direction (hub to shroud)
@@ -76,11 +75,8 @@ class FreeVortex(object):
 		self.compressible = compressible
 		assert not self.compressible, "Compressible flow not yet supported"
 		
-		self.inlet_s0 = inlet_s0
-		self.inlet_s1 = inlet_s1
+		self.meridional_patch = meridional_patch
 		self.inlet_v = inlet_v
-		self.outlet_s1 = outlet_s1
-		self.outlet_s0 = outlet_s0
 		self.outlet_v = outlet_v
 		
 		# set up folder structure
@@ -98,37 +94,14 @@ class FreeVortex(object):
 		shutil.copytree(self.case_template, self.casename)
 	
 	def makeMeridionalPatch(self):
-		"""Produces a Bezier patch connecting the inlet and the outlet.  This is
-		second order, with three control points.  The center control point is chosen
-		such that inlet and outlet velocities in the meridional plane match the
-		stated values.
-		
-		NOTE: This will likely break for a purely axial flowfield, and will need
-		to go to fourth order somehow."""
-		k_11 = self.inlet_s0
-		k_12 = self.inlet_s1
-		
-		k_31 = self.outlet_s0
-		k_32 = self.outlet_s1
-		
-		# Let's find the intersection:
-		# Our velocities are 3D, so we'll need to strip out the tangential component.
-		v_in_rz = np.array([self.inlet_v[0], self.inlet_v[2]]).T
-		v_out_rz = np.array([self.outlet_v[0], self.outlet_v[2]]).T
-		k_21 = intersection_2d(k_11, k_11+v_in_rz, k_31, k_31+v_out_rz)
-		k_22 = intersection_2d(k_12, k_12+v_in_rz, k_32, k_32+v_out_rz)
-		
-		k_array = np.array([[k_11, k_12],
-		                    [k_21, k_22],
-		                    [k_31, k_32]])
-		self.b = BezierSurface(k_array)
+		"""Generates the grid points for a meridional patch in the given patch area."""
 		
 		# Grid points
 		self.r = np.zeros((self.points_m, self.points_s))
 		self.z = np.zeros((self.points_m, self.points_s))
 		for m in range(self.points_m):
 			for s in range(self.points_s):
-				pt_rz = self.b(m/(self.points_m-1), s/(self.points_s-1))
+				pt_rz = self.meridional_patch(m/(self.points_m-1), s/(self.points_s-1))
 				self.r[m][s] = pt_rz[0]
 				self.z[m][s] = pt_rz[1]
 		return (self.r, self.z)
@@ -315,6 +288,13 @@ class FreeVortex(object):
 
 
 if __name__=="__main__":
+	from MeridionalPatchSpline import MeridionalPatchSpline
+	mp = MeridionalPatchSpline(np.array([3e-3, 7e-3]), 
+	                           np.array([7.8e-3, 7e-3]),
+	                           np.array([12.8e-3, 0.0]),
+	                           np.array([12.8e-3, 2.0e-3]), 
+	                           np.array([0.0, -39.6]),
+	                           np.array([39.63, -19.15, 0.0]))
 	fv = FreeVortex()
 	fv.solve()
 	

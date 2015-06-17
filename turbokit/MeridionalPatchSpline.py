@@ -33,7 +33,7 @@ class MeridionalPatchSpline(MeridionalPatch):
 		self.k_array = np.array([[m0_s0, m0_s1],
 		                         [s0_ctrlpoint, s1_ctrlpoint],
 		                         [m1_s0, m1_s1]])
-		self.b = BezierPatch(self.k_array)
+		self.b = BezierSurface(self.k_array)
 		
 	def __call__(self, m, s):
 		return self.b(m, s)
