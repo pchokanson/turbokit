@@ -4,7 +4,8 @@ import math
 
 # The top two functions don't belong here, but don't justify their own files
 def intersection_2d(a1, a2, b1, b2):
-	"""Find the intersection of the lines defined a1-a2 and b1-b2 or returns false"""
+	"""Find the intersection of the lines defined a1-a2 and b1-b2 or returns false.
+	Returns a 2D row vector (typically r, z)."""
 	D = (a1[0]-a2[0])*(b1[1]-b2[1]) - (a1[1]-a2[1])*(b1[0]-b2[0])
 	if D == 0:
 		return False
@@ -13,7 +14,7 @@ def intersection_2d(a1, a2, b1, b2):
 		      (a1[0]-a2[0])*(b1[0]*b2[1]-b1[1]*b2[0])) / D
 		c1 = ((b1[1]-b2[1])*(a1[0]*a2[1]-a1[1]*a2[0]) - 
 		      (a1[1]-a2[1])*(b1[0]*b2[1]-b1[1]*b2[0])) / D
-		return np.array([[c0],[c1]])
+		return np.array([c0, c1])
 	
 def rtz_to_xyz(rtz):
 	return [rtz[0] * math.cos(rtz[1]), rtz[0] * math.sin(rtz[1]), rtz[2]]

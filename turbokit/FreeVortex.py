@@ -118,9 +118,10 @@ class FreeVortex(object):
 		k_21 = intersection_2d(k_11, k_11+v_in_rz, k_31, k_31+v_out_rz)
 		k_22 = intersection_2d(k_12, k_12+v_in_rz, k_32, k_32+v_out_rz)
 		
-		self.b = BezierSurface(np.array([[k_11, k_12],
-		                            [k_21, k_22],
-		                            [k_31, k_32]]))
+		k_array = np.array([[k_11, k_12],
+		                    [k_21, k_22],
+		                    [k_31, k_32]])
+		self.b = BezierSurface(k_array)
 		
 		# Grid points
 		self.r = np.zeros((self.points_m, self.points_s))
