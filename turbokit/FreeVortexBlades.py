@@ -107,78 +107,108 @@ class FreeVortexBlades(FreeVortex):
 			# For each blade
 			th_i = 2 * math.pi * i / self.Z
 			th_next = 2 * math.pi * (i+1) / self.Z
-			
-			# For convenience
-			th_l = self.th_l
-			th_t = self.th_t
-			
+			self.makeBlade(th_i, th_next)
+	
+	def makeBladeLeadingEdge(self, th_i):
+		for s in range(1, self.r.shape[1]):
+			self.faces.append([rtz_to_xyz([self.r[0,s-1], self.th_l[0,s-1]+th_i, self.z[0,s-1]]),
+			                   rtz_to_xyz([self.r[0,s-1], self.th_t[0,s-1]+th_i, self.z[0,s-1]]),
+			                   rtz_to_xyz([self.r[0,s  ], self.th_t[0,s  ]+th_i, self.z[0,s  ]]),
+			                   rtz_to_xyz([self.r[0,s  ], self.th_l[0,s  ]+th_i, self.z[0,s  ]])])
+	
+	def makeBladeTrailingEdge(self, th_i):
+		for s in range(1, self.r.shape[1]):
+			self.faces.append([rtz_to_xyz([self.r[-1,s-1], self.th_l[-1,s-1]+th_i, self.z[-1,s-1]]),
+			                   rtz_to_xyz([self.r[-1,s  ], self.th_l[-1,s  ]+th_i, self.z[-1,s  ]]),
+			                   rtz_to_xyz([self.r[-1,s  ], self.th_t[-1,s  ]+th_i, self.z[-1,s  ]]),
+			                   rtz_to_xyz([self.r[-1,s-1], self.th_t[-1,s-1]+th_i, self.z[-1,s-1]])])
+	
+	def makeBladeLeadingSide(self, th_i):
+		for m in range(1, self.r.shape[0]):
 			for s in range(1, self.r.shape[1]):
-				# Blade leading edges
-				self.faces.append([rtz_to_xyz([self.r[0,s-1], th_l[0,s-1]+th_i, self.z[0,s-1]]),
-				                   rtz_to_xyz([self.r[0,s-1], th_t[0,s-1]+th_i, self.z[0,s-1]]),
-				                   rtz_to_xyz([self.r[0,s  ], th_t[0,s  ]+th_i, self.z[0,s  ]]),
-				                   rtz_to_xyz([self.r[0,s  ], th_l[0,s  ]+th_i, self.z[0,s  ]])])
-				# Blade trailing edges
-				self.faces.append([rtz_to_xyz([self.r[-1,s-1], th_l[-1,s-1]+th_i, self.z[-1,s-1]]),
-				                   rtz_to_xyz([self.r[-1,s  ], th_l[-1,s  ]+th_i, self.z[-1,s  ]]),
-				                   rtz_to_xyz([self.r[-1,s  ], th_t[-1,s  ]+th_i, self.z[-1,s  ]]),
-				                   rtz_to_xyz([self.r[-1,s-1], th_t[-1,s-1]+th_i, self.z[-1,s-1]])])
+				self.faces.append([rtz_to_xyz([self.r[m-1,s-1], self.th_l[m-1,s-1]+th_i, self.z[m-1,s-1]]),
+				                   rtz_to_xyz([self.r[m-1,s  ], self.th_l[m-1,s  ]+th_i, self.z[m-1,s  ]]),
+				                   rtz_to_xyz([self.r[m  ,s  ], self.th_l[m  ,s  ]+th_i, self.z[m  ,s  ]]),
+				                   rtz_to_xyz([self.r[m  ,s-1], self.th_l[m  ,s-1]+th_i, self.z[m  ,s-1]])])
+	
+	def makeBladeTrailingSide(self, th_i):
+		for m in range(1, self.r.shape[0]):
+			for s in range(1, self.r.shape[1]):
+				self.faces.append([rtz_to_xyz([self.r[m-1,s-1], self.th_t[m-1,s-1]+th_i, self.z[m-1,s-1]]),
+				                   rtz_to_xyz([self.r[m  ,s-1], self.th_t[m  ,s-1]+th_i, self.z[m  ,s-1]]),
+				                   rtz_to_xyz([self.r[m  ,s  ], self.th_t[m  ,s  ]+th_i, self.z[m  ,s  ]]),
+				                   rtz_to_xyz([self.r[m-1,s  ], self.th_t[m-1,s  ]+th_i, self.z[m-1,s  ]])])
+	
+	def makeBladeShroudEdge(self, th_i):
+		for m in range(1, self.r.shape[0]):
+			# Faces at blade (shroud) ends
+			self.faces.append([rtz_to_xyz([self.r[m-1,-1], self.th_t[m-1,-1]+th_i, self.z[m-1,-1]]),
+			                   rtz_to_xyz([self.r[m  ,-1], self.th_t[m  ,-1]+th_i, self.z[m  ,-1]]),
+			                   rtz_to_xyz([self.r[m  ,-1], self.th_l[m  ,-1]+th_i, self.z[m  ,-1]]),
+			                   rtz_to_xyz([self.r[m-1,-1], self.th_l[m-1,-1]+th_i, self.z[m-1,-1]])])
+	
+	def makeBladeHubEdge(self, th_i):
+		for m in range(1, self.r.shape[0]):
+			# Faces at blade hub ends
+			self.faces.append([rtz_to_xyz([self.r[m-1,0], self.th_l[m-1,0]+th_i, self.z[m-1,0]]),
+			                   rtz_to_xyz([self.r[m  ,0], self.th_l[m  ,0]+th_i, self.z[m  ,0]]),
+			                   rtz_to_xyz([self.r[m  ,0], self.th_t[m  ,0]+th_i, self.z[m  ,0]]),
+			                   rtz_to_xyz([self.r[m-1,0], self.th_t[m-1,0]+th_i, self.z[m-1,0]])])
+	
+	def makeBlade(self, th_i, th_next):
+		# For convenience
+		th_l = self.th_l
+		th_t = self.th_t
+		
+		self.makeBladeLeadingEdge(th_i)
+		self.makeBladeTrailingEdge(th_i)
+		self.makeBladeLeadingSide(th_i)
+		self.makeBladeTrailingSide(th_i)
+		self.makeBladeShroudEdge(th_i)
+		#self.makeBladeHubEdge(th_i)
+		
+		# Blade sides
+		for m in range(1, self.r.shape[0]):
+			# Faces at blade (shroud) ends
+			self.faces.append([rtz_to_xyz([self.r[m-1,-1], th_t[m-1,-1]+th_i, self.z[m-1,-1]]),
+			                   rtz_to_xyz([self.r[m  ,-1], th_t[m  ,-1]+th_i, self.z[m  ,-1]]),
+			                   rtz_to_xyz([self.r[m  ,-1], th_l[m  ,-1]+th_i, self.z[m  ,-1]]),
+			                   rtz_to_xyz([self.r[m-1,-1], th_l[m-1,-1]+th_i, self.z[m-1,-1]])])
 			
-			# Blade sides
-			for m in range(1, self.r.shape[0]):
-				for s in range(1, self.r.shape[1]):
-					pass
-					# Leading edge
-					self.faces.append([rtz_to_xyz([self.r[m-1,s-1], th_l[m-1,s-1]+th_i, self.z[m-1,s-1]]),
-					                   rtz_to_xyz([self.r[m-1,s  ], th_l[m-1,s  ]+th_i, self.z[m-1,s  ]]),
-					                   rtz_to_xyz([self.r[m  ,s  ], th_l[m  ,s  ]+th_i, self.z[m  ,s  ]]),
-					                   rtz_to_xyz([self.r[m  ,s-1], th_l[m  ,s-1]+th_i, self.z[m  ,s-1]])])
-					# Trailing edge
-					self.faces.append([rtz_to_xyz([self.r[m-1,s-1], th_t[m-1,s-1]+th_i, self.z[m-1,s-1]]),
-					                   rtz_to_xyz([self.r[m  ,s-1], th_t[m  ,s-1]+th_i, self.z[m  ,s-1]]),
-					                   rtz_to_xyz([self.r[m  ,s  ], th_t[m  ,s  ]+th_i, self.z[m  ,s  ]]),
-					                   rtz_to_xyz([self.r[m-1,s  ], th_t[m-1,s  ]+th_i, self.z[m-1,s  ]])])
-				
-				# Faces at blade (shroud) ends
-				self.faces.append([rtz_to_xyz([self.r[m-1,-1], th_t[m-1,-1]+th_i, self.z[m-1,-1]]),
-				                   rtz_to_xyz([self.r[m  ,-1], th_t[m  ,-1]+th_i, self.z[m  ,-1]]),
-				                   rtz_to_xyz([self.r[m  ,-1], th_l[m  ,-1]+th_i, self.z[m  ,-1]]),
-				                   rtz_to_xyz([self.r[m-1,-1], th_l[m-1,-1]+th_i, self.z[m-1,-1]])])
-				
-				# Faces between blades
-				# theta points on upstream/downstream side of each face
-				th_ma = np.linspace(th_l[m,0]+th_i, th_t[m,0]+th_next, num=self.interblade_faces+1) 
-				th_mb = np.linspace(th_l[m-1,0]+th_i, th_t[m-1,0]+th_next, num=self.interblade_faces+1)
-				for j in range(self.interblade_faces):
-					# We want to produce a mesh that interpolates between th_l[m0,0]+th_i and th_t[m0,0]+th_next
-					# and the same for m0
-					self.faces.append([rtz_to_xyz([self.r[m-1,0], th_mb[j]  , self.z[m-1,0]]),
-					                   rtz_to_xyz([self.r[m  ,0], th_ma[j]  , self.z[m  ,0]]),
-					                   rtz_to_xyz([self.r[m  ,0], th_ma[j+1], self.z[m  ,0]]),
-					                   rtz_to_xyz([self.r[m-1,0], th_mb[j+1], self.z[m-1,0]])])
-			m = self.points_m-1
+			# Faces between blades
+			# theta points on upstream/downstream side of each face
+			th_ma = np.linspace(th_l[m,0]+th_i, th_t[m,0]+th_next, num=self.interblade_faces+1) 
+			th_mb = np.linspace(th_l[m-1,0]+th_i, th_t[m-1,0]+th_next, num=self.interblade_faces+1)
 			for j in range(self.interblade_faces):
-				# Cap at inlet
-				th_ma = np.linspace(th_l[0,0]+th_i, 
-				                    th_t[0,0]+th_next, 
-				                    num=self.interblade_faces+1) 
-				self.faces.append([rtz_to_xyz([self.r[0,0], th_ma[j]  , self.z[0,0]]),
-				                   rtz_to_xyz([self.r[0,0], th_ma[j+1]  , self.z[0,0]]),
-				                   rtz_to_xyz([0, 0, self.z[0,0]])])
-				# Cap at outlet
-				th_mb = np.linspace(th_l[m-1,0]+th_i, 
-				                    th_t[m-1,0]+th_next, 
-				                    num=self.interblade_faces+1)
-				self.faces.append([rtz_to_xyz([self.r[m-1,0], th_mb[j+1]  , self.z[m-1,0]]),
-				                   rtz_to_xyz([self.r[m-1,0], th_mb[j]  , self.z[m-1,0]]),
-				                   rtz_to_xyz([0, 0, self.z[m-1,0]])])
-			
-			self.faces.append([rtz_to_xyz([self.r[0,0], th_t[0,0]+th_i  , self.z[0,0]]),
-			                   rtz_to_xyz([self.r[0,0], th_l[0,0]+th_i  , self.z[0,0]]),
+				# We want to produce a mesh that interpolates between th_l[m0,0]+th_i and th_t[m0,0]+th_next
+				# and the same for m0
+				self.faces.append([rtz_to_xyz([self.r[m-1,0], th_mb[j]  , self.z[m-1,0]]),
+				                   rtz_to_xyz([self.r[m  ,0], th_ma[j]  , self.z[m  ,0]]),
+				                   rtz_to_xyz([self.r[m  ,0], th_ma[j+1], self.z[m  ,0]]),
+				                   rtz_to_xyz([self.r[m-1,0], th_mb[j+1], self.z[m-1,0]])])
+		m = self.points_m-1
+		for j in range(self.interblade_faces):
+			# Cap at inlet
+			th_ma = np.linspace(th_l[0,0]+th_i, 
+			                    th_t[0,0]+th_next, 
+			                    num=self.interblade_faces+1) 
+			self.faces.append([rtz_to_xyz([self.r[0,0], th_ma[j]  , self.z[0,0]]),
+			                   rtz_to_xyz([self.r[0,0], th_ma[j+1]  , self.z[0,0]]),
 			                   rtz_to_xyz([0, 0, self.z[0,0]])])
-			self.faces.append([rtz_to_xyz([self.r[m-1,0], th_l[m-1,0]+th_i  , self.z[m-1,0]]),
-			                   rtz_to_xyz([self.r[m-1,0], th_t[m-1,0]+th_i  , self.z[m-1,0]]),
+			# Cap at outlet
+			th_mb = np.linspace(th_l[m-1,0]+th_i, 
+			                    th_t[m-1,0]+th_next, 
+			                    num=self.interblade_faces+1)
+			self.faces.append([rtz_to_xyz([self.r[m-1,0], th_mb[j+1]  , self.z[m-1,0]]),
+			                   rtz_to_xyz([self.r[m-1,0], th_mb[j]  , self.z[m-1,0]]),
 			                   rtz_to_xyz([0, 0, self.z[m-1,0]])])
+		
+		self.faces.append([rtz_to_xyz([self.r[0,0], th_t[0,0]+th_i  , self.z[0,0]]),
+		                   rtz_to_xyz([self.r[0,0], th_l[0,0]+th_i  , self.z[0,0]]),
+		                   rtz_to_xyz([0, 0, self.z[0,0]])])
+		self.faces.append([rtz_to_xyz([self.r[m-1,0], th_l[m-1,0]+th_i  , self.z[m-1,0]]),
+		                   rtz_to_xyz([self.r[m-1,0], th_t[m-1,0]+th_i  , self.z[m-1,0]]),
+		                   rtz_to_xyz([0, 0, self.z[m-1,0]])])
 	
 	def writeStlMesh(self, outfilename):
 		"""Write out an STL file from the face data."""
