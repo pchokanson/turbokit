@@ -110,6 +110,9 @@ class FreeVortexBlades(FreeVortex):
 			self.makeBlade(th_i, th_next)
 	
 	def makeBladeLeadingEdge(self, th_i):
+		"""Makes the leading edge faces at m=0."""
+		# NOTE: This may be eliminated in favor of zero-thickness at the leading and
+		# trailing edges, which would simplify the mesh topology a bit.
 		for s in range(1, self.r.shape[1]):
 			self.faces.append([rtz_to_xyz([self.r[0,s-1], self.th_l[0,s-1]+th_i, self.z[0,s-1]]),
 			                   rtz_to_xyz([self.r[0,s-1], self.th_t[0,s-1]+th_i, self.z[0,s-1]]),
@@ -117,6 +120,9 @@ class FreeVortexBlades(FreeVortex):
 			                   rtz_to_xyz([self.r[0,s  ], self.th_l[0,s  ]+th_i, self.z[0,s  ]])])
 	
 	def makeBladeTrailingEdge(self, th_i):
+		"""Makes the leading edge faces at m=1."""
+		# NOTE: This may be eliminated in favor of zero-thickness at the leading and
+		# trailing edges, which would simplify the mesh topology a bit.
 		for s in range(1, self.r.shape[1]):
 			self.faces.append([rtz_to_xyz([self.r[-1,s-1], self.th_l[-1,s-1]+th_i, self.z[-1,s-1]]),
 			                   rtz_to_xyz([self.r[-1,s  ], self.th_l[-1,s  ]+th_i, self.z[-1,s  ]]),
@@ -124,6 +130,7 @@ class FreeVortexBlades(FreeVortex):
 			                   rtz_to_xyz([self.r[-1,s-1], self.th_t[-1,s-1]+th_i, self.z[-1,s-1]])])
 	
 	def makeBladeLeadingSide(self, th_i):
+		"""Make the leading side of the blade (pressure side)."""
 		for m in range(1, self.r.shape[0]):
 			for s in range(1, self.r.shape[1]):
 				self.faces.append([rtz_to_xyz([self.r[m-1,s-1], self.th_l[m-1,s-1]+th_i, self.z[m-1,s-1]]),
@@ -132,6 +139,7 @@ class FreeVortexBlades(FreeVortex):
 				                   rtz_to_xyz([self.r[m  ,s-1], self.th_l[m  ,s-1]+th_i, self.z[m  ,s-1]])])
 	
 	def makeBladeTrailingSide(self, th_i):
+		"""Make the trailing side of the blade (suction side)."""
 		for m in range(1, self.r.shape[0]):
 			for s in range(1, self.r.shape[1]):
 				self.faces.append([rtz_to_xyz([self.r[m-1,s-1], self.th_t[m-1,s-1]+th_i, self.z[m-1,s-1]]),
@@ -140,6 +148,9 @@ class FreeVortexBlades(FreeVortex):
 				                   rtz_to_xyz([self.r[m-1,s  ], self.th_t[m-1,s  ]+th_i, self.z[m-1,s  ]])])
 	
 	def makeBladeShroudEdge(self, th_i):
+		"""Make the faces on the shroud side of the blade (s=1).  For unshrouded 
+		rotors, this is typically called.  Not typically called for shrouded rotors 
+		or stators."""
 		for m in range(1, self.r.shape[0]):
 			# Faces at blade (shroud) ends
 			self.faces.append([rtz_to_xyz([self.r[m-1,-1], self.th_t[m-1,-1]+th_i, self.z[m-1,-1]]),
@@ -148,6 +159,8 @@ class FreeVortexBlades(FreeVortex):
 			                   rtz_to_xyz([self.r[m-1,-1], self.th_l[m-1,-1]+th_i, self.z[m-1,-1]])])
 	
 	def makeBladeHubEdge(self, th_i):
+		"""Make the faces on the hub side of the blade (s=0).  For solid-centered 
+		rotors, this isn't called, but typically will be for stators."""
 		for m in range(1, self.r.shape[0]):
 			# Faces at blade hub ends
 			self.faces.append([rtz_to_xyz([self.r[m-1,0], self.th_l[m-1,0]+th_i, self.z[m-1,0]]),
@@ -156,6 +169,7 @@ class FreeVortexBlades(FreeVortex):
 			                   rtz_to_xyz([self.r[m-1,0], self.th_t[m-1,0]+th_i, self.z[m-1,0]])])
 	
 	def makeBlade(self, th_i, th_next):
+		
 		# For convenience
 		th_l = self.th_l
 		th_t = self.th_t
