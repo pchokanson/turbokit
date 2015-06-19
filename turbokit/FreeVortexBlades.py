@@ -19,13 +19,28 @@ from Splines import *
 from FreeVortex import FreeVortex
 import stl_writer
 
+def condense_face(face):
+	"""Remove consecutive duplicate vertices from a face, so we don't have extra
+	triangles in the STL file."""
+	if len(face) == 3:
+		return face
+	if len(face) == 4:
+		for i in range(len(face)):
+			if face[i] == face[i-1]:
+				del face[i]
+				#print("removed vertex")
+				return face
+		return face
+	else:
+		raise Exception("Face has incorrect number of vertices")
+
 class FreeVortexBlades(FreeVortex):
 	"""Subclass of FreeVortex meant to implement bladed flow shapes"""
 	def __init__(self, 
 	             Z=7, 
 	             Omega=7330.0,
-	             thickness_fn_l=lambda m,s:0.001, 
-	             thickness_fn_t=lambda m,s:0.001,
+	             thickness_fn_l=lambda m,s: 0 if m == 0 or m == 1 else 0.001, 
+	             thickness_fn_t=lambda m,s: 0 if m == 0 or m == 1 else 0.001,
 	             interblade_faces = 6,
 	             hub_solid = True,
 	             shroud_solid = False,
@@ -86,6 +101,7 @@ class FreeVortexBlades(FreeVortex):
 		# NOTE: makes solid-centered meshes for now.  Not desirable for stators, typically.
 		# NOTE: Probably swaps thickness functions when Omega is negative
 		self.faces = []
+
 		
 		th_l = np.copy(self.th)
 		th_t = np.copy(self.th)
@@ -168,31 +184,15 @@ class FreeVortexBlades(FreeVortex):
 			                   rtz_to_xyz([self.r[m  ,0], self.th_t[m  ,0]+th_i, self.z[m  ,0]]),
 			                   rtz_to_xyz([self.r[m-1,0], self.th_t[m-1,0]+th_i, self.z[m-1,0]])])
 	
-	def makeBlade(self, th_i, th_next):
-		
-		# For convenience
-		th_l = self.th_l
-		th_t = self.th_t
-		
-		self.makeBladeLeadingEdge(th_i)
-		self.makeBladeTrailingEdge(th_i)
-		self.makeBladeLeadingSide(th_i)
-		self.makeBladeTrailingSide(th_i)
-		self.makeBladeShroudEdge(th_i)
-		#self.makeBladeHubEdge(th_i)
-		
-		# Blade sides
+	def makeBladeSpan(self, th_l0, th_t1):
+		"""Given the leading edge profile of the current blade, and the trailing
+		edge of the next blade, create the junction between them."""
 		for m in range(1, self.r.shape[0]):
-			# Faces at blade (shroud) ends
-			self.faces.append([rtz_to_xyz([self.r[m-1,-1], th_t[m-1,-1]+th_i, self.z[m-1,-1]]),
-			                   rtz_to_xyz([self.r[m  ,-1], th_t[m  ,-1]+th_i, self.z[m  ,-1]]),
-			                   rtz_to_xyz([self.r[m  ,-1], th_l[m  ,-1]+th_i, self.z[m  ,-1]]),
-			                   rtz_to_xyz([self.r[m-1,-1], th_l[m-1,-1]+th_i, self.z[m-1,-1]])])
 			
 			# Faces between blades
 			# theta points on upstream/downstream side of each face
-			th_ma = np.linspace(th_l[m,0]+th_i, th_t[m,0]+th_next, num=self.interblade_faces+1) 
-			th_mb = np.linspace(th_l[m-1,0]+th_i, th_t[m-1,0]+th_next, num=self.interblade_faces+1)
+			th_ma = np.linspace(th_l0[m,0], th_t1[m,0], num=self.interblade_faces+1) 
+			th_mb = np.linspace(th_l0[m-1,0], th_t1[m-1,0], num=self.interblade_faces+1)
 			for j in range(self.interblade_faces):
 				# We want to produce a mesh that interpolates between th_l[m0,0]+th_i and th_t[m0,0]+th_next
 				# and the same for m0
@@ -200,7 +200,25 @@ class FreeVortexBlades(FreeVortex):
 				                   rtz_to_xyz([self.r[m  ,0], th_ma[j]  , self.z[m  ,0]]),
 				                   rtz_to_xyz([self.r[m  ,0], th_ma[j+1], self.z[m  ,0]]),
 				                   rtz_to_xyz([self.r[m-1,0], th_mb[j+1], self.z[m-1,0]])])
-		m = self.points_m-1
+	
+	def makeBlade(self, th_i, th_next):
+		
+		# For convenience
+		th_l = self.th_l
+		th_t = self.th_t
+		
+		#self.makeBladeLeadingEdge(th_i)
+		#self.makeBladeTrailingEdge(th_i)
+		self.makeBladeLeadingSide(th_i)
+		self.makeBladeTrailingSide(th_i)
+		self.makeBladeShroudEdge(th_i)
+		#self.makeBladeHubEdge(th_i)
+		
+		self.makeBladeSpan(th_l + th_i, th_t + th_next)
+		
+		# Blade sides
+		
+
 		for j in range(self.interblade_faces):
 			# Cap at inlet
 			th_ma = np.linspace(th_l[0,0]+th_i, 
@@ -210,19 +228,12 @@ class FreeVortexBlades(FreeVortex):
 			                   rtz_to_xyz([self.r[0,0], th_ma[j+1]  , self.z[0,0]]),
 			                   rtz_to_xyz([0, 0, self.z[0,0]])])
 			# Cap at outlet
-			th_mb = np.linspace(th_l[m-1,0]+th_i, 
-			                    th_t[m-1,0]+th_next, 
+			th_mb = np.linspace(th_l[-1,0]+th_i, 
+			                    th_t[-1,0]+th_next, 
 			                    num=self.interblade_faces+1)
-			self.faces.append([rtz_to_xyz([self.r[m-1,0], th_mb[j+1]  , self.z[m-1,0]]),
-			                   rtz_to_xyz([self.r[m-1,0], th_mb[j]  , self.z[m-1,0]]),
-			                   rtz_to_xyz([0, 0, self.z[m-1,0]])])
-		
-		self.faces.append([rtz_to_xyz([self.r[0,0], th_t[0,0]+th_i  , self.z[0,0]]),
-		                   rtz_to_xyz([self.r[0,0], th_l[0,0]+th_i  , self.z[0,0]]),
-		                   rtz_to_xyz([0, 0, self.z[0,0]])])
-		self.faces.append([rtz_to_xyz([self.r[m-1,0], th_l[m-1,0]+th_i  , self.z[m-1,0]]),
-		                   rtz_to_xyz([self.r[m-1,0], th_t[m-1,0]+th_i  , self.z[m-1,0]]),
-		                   rtz_to_xyz([0, 0, self.z[m-1,0]])])
+			self.faces.append([rtz_to_xyz([self.r[-1,0], th_mb[j+1]  , self.z[-1,0]]),
+			                   rtz_to_xyz([self.r[-1,0], th_mb[j]  , self.z[-1,0]]),
+			                   rtz_to_xyz([0, 0, self.z[-1,0]])])
 	
 	def writeStlMesh(self, outfilename):
 		"""Write out an STL file from the face data."""
@@ -230,7 +241,7 @@ class FreeVortexBlades(FreeVortex):
 		stl = stl_writer.Binary_STL_Writer(stl_f)
 		print("Writing STL with %d faces" % len(self.faces))
 		for quad in self.faces:
-			stl.add_face(quad)
+			stl.add_face(condense_face(quad))
 		stl.close()
 
 if __name__ == "__main__":
