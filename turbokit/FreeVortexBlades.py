@@ -14,9 +14,10 @@ import PyFoam as pf
 from PyFoam.RunDictionary.ParsedParameterFile import ParsedParameterFile
 from PyFoam.Basics.STLFile import STLFile
 
-
 from Splines import *
 from FreeVortex import FreeVortex
+from BladeFactoryBase import BladeFactoryBase, BladeBase
+from BladeCapFactoryBase import BladeCapFactoryBase
 import stl_writer
 
 def condense_face(face):
@@ -32,24 +33,24 @@ def condense_face(face):
 				return face
 		return face
 	else:
-		raise Exception("Face has incorrect number of vertices")
+		raise Exception("Face %s has incorrect number of vertices" % face)
 
 class FreeVortexBlades(FreeVortex):
 	"""Subclass of FreeVortex meant to implement bladed flow shapes"""
-	def __init__(self, 
-	             Z=7, 
+	def __init__(self,
+	             Z=7,
+	             bladeFactories = None,
 	             Omega=7330.0,
-	             thickness_fn_l=lambda m,s: 0 if m == 0 or m == 1 else 0.001, 
+	             thickness_fn_l=lambda m,s: 0 if m == 0 or m == 1 else 0.001,
 	             thickness_fn_t=lambda m,s: 0 if m == 0 or m == 1 else 0.001,
 	             interblade_faces = 6,
-	             hub_solid = True,
-	             shroud_solid = False,
 	             **kwargs):
 		"""Create a representation of free-vortex flow through a bladed region.
-		
+
 		Keyword arguments:
 		(same as FreeVortex)
 		Z -- blade count
+		bladeFactories -- factory objects for making each blade
 		Omega -- angular velocity
 		thickness_fn_l -- function for leading edge offset from blade centerline
 		thickness_fn_t -- function for trailing edge offset from blade centerline
@@ -58,25 +59,27 @@ class FreeVortexBlades(FreeVortex):
 		shroud_solid -- whether to make a solid region for the shroud"""
 		super(FreeVortexBlades, self).__init__(**kwargs)
 		self.Z = Z
+
+		if bladeFactories is not None:
+			self.bladeFactories = bladeFactories
+		else:
+			self.bladeFactories = [BladeFactoryBase() for i in range(self.Z)]
+
 		self.Omega = Omega
 		self.thickness_fn_l = thickness_fn_l
 		self.thickness_fn_t = thickness_fn_t
-		self.hub_solid = hub_solid
-		self.shroud_solid = shroud_solid
 		self.interblade_faces = interblade_faces
-		
-		assert hub_solid and not shroud_solid, "Hub/shroud surface options not implemented"
-		
+
 		self.makeBladeProfile()
 		self.makeMesh()
-	
+
 	def makeBladeProfile(self):
 		"""Calculate the angular position of the blade at each point (m, s).  This
 		is done by numerically integrating the relative velocity."""
 		# This is a bit of a hack, but we only have midpoint values and we need
 		# to interpolate points outside the convex hull
 		interp = scipy.interpolate.NearestNDInterpolator(self.rz_points, self.u_rtz_points)
-		
+
 		th = np.zeros(self.r.shape)
 		beta = np.zeros(self.r.shape)
 		for s in range(self.r.shape[1]):
@@ -95,14 +98,26 @@ class FreeVortexBlades(FreeVortex):
 		self.th = th
 		self.beta = beta
 		self.beta[0,:] = self.beta[1,:] # slightly better than using zero, still not perfect
-	
+
 	def makeMesh(self):
 		"""Enumerate all of the faces required to make a mesh."""
-		# NOTE: makes solid-centered meshes for now.  Not desirable for stators, typically.
 		# NOTE: Probably swaps thickness functions when Omega is negative
 		self.faces = []
+		self.blades = []
 
-		
+		for i in range(0, self.Z):
+			th_i = i * 2 * np.pi / self.Z
+			blade = self.bladeFactories[i](self.r, self.z, self.th + th_i, self.beta)
+			self.faces.extend(blade.makeBladeFaces())
+			self.blades.append(blade)
+
+		for i in range(1, self.Z):
+			self.makeBladeSpan(self.blades[i-1].th_l, self.blades[i].th_t)
+		# Finally a little black magic to make the last inter-blade span work
+		# correctly.  The 2*pi offset ensures that they don't wrap the linear
+		# interpolation.
+		self.makeBladeSpan(self.blades[-1].th_l - 2 * np.pi, self.blades[0].th_t)
+
 		th_l = np.copy(self.th)
 		th_t = np.copy(self.th)
 		for s in range(0, self.r.shape[1]):
@@ -117,81 +132,46 @@ class FreeVortexBlades(FreeVortex):
 				th_t[m,s] += dth_t
 		self.th_l = th_l
 		self.th_t = th_t
-		
+
 		# Make the actual mesh
-		for i in range(self.Z): 
+		for i in range(self.Z):
 			# For each blade
 			th_i = 2 * math.pi * i / self.Z
 			th_next = 2 * math.pi * (i+1) / self.Z
-			self.makeBlade(th_i, th_next)
-	
-	def makeBladeLeadingEdge(self, th_i):
-		"""Makes the leading edge faces at m=0."""
-		# NOTE: This may be eliminated in favor of zero-thickness at the leading and
-		# trailing edges, which would simplify the mesh topology a bit.
-		for s in range(1, self.r.shape[1]):
-			self.faces.append([rtz_to_xyz([self.r[0,s-1], self.th_l[0,s-1]+th_i, self.z[0,s-1]]),
-			                   rtz_to_xyz([self.r[0,s-1], self.th_t[0,s-1]+th_i, self.z[0,s-1]]),
-			                   rtz_to_xyz([self.r[0,s  ], self.th_t[0,s  ]+th_i, self.z[0,s  ]]),
-			                   rtz_to_xyz([self.r[0,s  ], self.th_l[0,s  ]+th_i, self.z[0,s  ]])])
-	
-	def makeBladeTrailingEdge(self, th_i):
-		"""Makes the leading edge faces at m=1."""
-		# NOTE: This may be eliminated in favor of zero-thickness at the leading and
-		# trailing edges, which would simplify the mesh topology a bit.
-		for s in range(1, self.r.shape[1]):
-			self.faces.append([rtz_to_xyz([self.r[-1,s-1], self.th_l[-1,s-1]+th_i, self.z[-1,s-1]]),
-			                   rtz_to_xyz([self.r[-1,s  ], self.th_l[-1,s  ]+th_i, self.z[-1,s  ]]),
-			                   rtz_to_xyz([self.r[-1,s  ], self.th_t[-1,s  ]+th_i, self.z[-1,s  ]]),
-			                   rtz_to_xyz([self.r[-1,s-1], self.th_t[-1,s-1]+th_i, self.z[-1,s-1]])])
-	
-	def makeBladeLeadingSide(self, th_i):
-		"""Make the leading side of the blade (pressure side)."""
-		for m in range(1, self.r.shape[0]):
-			for s in range(1, self.r.shape[1]):
-				self.faces.append([rtz_to_xyz([self.r[m-1,s-1], self.th_l[m-1,s-1]+th_i, self.z[m-1,s-1]]),
-				                   rtz_to_xyz([self.r[m-1,s  ], self.th_l[m-1,s  ]+th_i, self.z[m-1,s  ]]),
-				                   rtz_to_xyz([self.r[m  ,s  ], self.th_l[m  ,s  ]+th_i, self.z[m  ,s  ]]),
-				                   rtz_to_xyz([self.r[m  ,s-1], self.th_l[m  ,s-1]+th_i, self.z[m  ,s-1]])])
-	
-	def makeBladeTrailingSide(self, th_i):
-		"""Make the trailing side of the blade (suction side)."""
-		for m in range(1, self.r.shape[0]):
-			for s in range(1, self.r.shape[1]):
-				self.faces.append([rtz_to_xyz([self.r[m-1,s-1], self.th_t[m-1,s-1]+th_i, self.z[m-1,s-1]]),
-				                   rtz_to_xyz([self.r[m  ,s-1], self.th_t[m  ,s-1]+th_i, self.z[m  ,s-1]]),
-				                   rtz_to_xyz([self.r[m  ,s  ], self.th_t[m  ,s  ]+th_i, self.z[m  ,s  ]]),
-				                   rtz_to_xyz([self.r[m-1,s  ], self.th_t[m-1,s  ]+th_i, self.z[m-1,s  ]])])
-	
-	def makeBladeShroudEdge(self, th_i):
-		"""Make the faces on the shroud side of the blade (s=1).  For unshrouded 
-		rotors, this is typically called.  Not typically called for shrouded rotors 
-		or stators."""
-		for m in range(1, self.r.shape[0]):
-			# Faces at blade (shroud) ends
-			self.faces.append([rtz_to_xyz([self.r[m-1,-1], self.th_t[m-1,-1]+th_i, self.z[m-1,-1]]),
-			                   rtz_to_xyz([self.r[m  ,-1], self.th_t[m  ,-1]+th_i, self.z[m  ,-1]]),
-			                   rtz_to_xyz([self.r[m  ,-1], self.th_l[m  ,-1]+th_i, self.z[m  ,-1]]),
-			                   rtz_to_xyz([self.r[m-1,-1], self.th_l[m-1,-1]+th_i, self.z[m-1,-1]])])
-	
-	def makeBladeHubEdge(self, th_i):
-		"""Make the faces on the hub side of the blade (s=0).  For solid-centered 
-		rotors, this isn't called, but typically will be for stators."""
-		for m in range(1, self.r.shape[0]):
-			# Faces at blade hub ends
-			self.faces.append([rtz_to_xyz([self.r[m-1,0], self.th_l[m-1,0]+th_i, self.z[m-1,0]]),
-			                   rtz_to_xyz([self.r[m  ,0], self.th_l[m  ,0]+th_i, self.z[m  ,0]]),
-			                   rtz_to_xyz([self.r[m  ,0], self.th_t[m  ,0]+th_i, self.z[m  ,0]]),
-			                   rtz_to_xyz([self.r[m-1,0], self.th_t[m-1,0]+th_i, self.z[m-1,0]])])
-	
+			#self.makeBlade(th_i, th_next)
+
+	# TODO: Move the makeMeshHub/Shroud functions to another class that can be
+	# more easily subclassed.
+	def makeMeshHub(self, points_inlet, points_outlet):
+		pass
+		# for j in range(self.interblade_faces):
+		# 	# Cap at inlet
+		# 	th_ma = np.linspace(th_l[0,0]+th_i,
+		# 	                    th_t[0,0]+th_next,
+		# 	                    num=self.interblade_faces+1)
+		# 	self.faces.append([rtz_to_xyz([self.r[0,0], th_ma[j]  , self.z[0,0]]),
+		# 	                   rtz_to_xyz([self.r[0,0], th_ma[j+1]  , self.z[0,0]]),
+		# 	                   rtz_to_xyz([0, 0, self.z[0,0]])])
+		# 	# Cap at outlet
+		# 	th_mb = np.linspace(th_l[-1,0]+th_i,
+		# 	                    th_t[-1,0]+th_next,
+		# 	                    num=self.interblade_faces+1)
+		# 	self.faces.append([rtz_to_xyz([self.r[-1,0], th_mb[j+1]  , self.z[-1,0]]),
+		# 	                   rtz_to_xyz([self.r[-1,0], th_mb[j]  , self.z[-1,0]]),
+		# 	                   rtz_to_xyz([0, 0, self.z[-1,0]])])
+
+	def makeMeshShroud(self, points_inlet, points_outlet):
+		pass
+
+
 	def makeBladeSpan(self, th_l0, th_t1):
 		"""Given the leading edge profile of the current blade, and the trailing
 		edge of the next blade, create the junction between them."""
 		for m in range(1, self.r.shape[0]):
-			
+
 			# Faces between blades
 			# theta points on upstream/downstream side of each face
-			th_ma = np.linspace(th_l0[m,0], th_t1[m,0], num=self.interblade_faces+1) 
+			th_ma = np.linspace(th_l0[m,0], th_t1[m,0], num=self.interblade_faces+1)
 			th_mb = np.linspace(th_l0[m-1,0], th_t1[m-1,0], num=self.interblade_faces+1)
 			for j in range(self.interblade_faces):
 				# We want to produce a mesh that interpolates between th_l[m0,0]+th_i and th_t[m0,0]+th_next
@@ -200,41 +180,7 @@ class FreeVortexBlades(FreeVortex):
 				                   rtz_to_xyz([self.r[m  ,0], th_ma[j]  , self.z[m  ,0]]),
 				                   rtz_to_xyz([self.r[m  ,0], th_ma[j+1], self.z[m  ,0]]),
 				                   rtz_to_xyz([self.r[m-1,0], th_mb[j+1], self.z[m-1,0]])])
-	
-	def makeBlade(self, th_i, th_next):
-		
-		# For convenience
-		th_l = self.th_l
-		th_t = self.th_t
-		
-		#self.makeBladeLeadingEdge(th_i)
-		#self.makeBladeTrailingEdge(th_i)
-		self.makeBladeLeadingSide(th_i)
-		self.makeBladeTrailingSide(th_i)
-		self.makeBladeShroudEdge(th_i)
-		#self.makeBladeHubEdge(th_i)
-		
-		self.makeBladeSpan(th_l + th_i, th_t + th_next)
-		
-		# Blade sides
-		
 
-		for j in range(self.interblade_faces):
-			# Cap at inlet
-			th_ma = np.linspace(th_l[0,0]+th_i, 
-			                    th_t[0,0]+th_next, 
-			                    num=self.interblade_faces+1) 
-			self.faces.append([rtz_to_xyz([self.r[0,0], th_ma[j]  , self.z[0,0]]),
-			                   rtz_to_xyz([self.r[0,0], th_ma[j+1]  , self.z[0,0]]),
-			                   rtz_to_xyz([0, 0, self.z[0,0]])])
-			# Cap at outlet
-			th_mb = np.linspace(th_l[-1,0]+th_i, 
-			                    th_t[-1,0]+th_next, 
-			                    num=self.interblade_faces+1)
-			self.faces.append([rtz_to_xyz([self.r[-1,0], th_mb[j+1]  , self.z[-1,0]]),
-			                   rtz_to_xyz([self.r[-1,0], th_mb[j]  , self.z[-1,0]]),
-			                   rtz_to_xyz([0, 0, self.z[-1,0]])])
-	
 	def writeStlMesh(self, outfilename):
 		"""Write out an STL file from the face data."""
 		stl_f = open(outfilename, "wb")
@@ -245,6 +191,5 @@ class FreeVortexBlades(FreeVortex):
 		stl.close()
 
 if __name__ == "__main__":
-	fvb_rotor = FreeVortexBlades()
+	fvb_rotor = FreeVortexBlades(points_m=15, points_s = 10)
 	fvb_rotor.writeStlMesh("rotormesh.stl")
-	
