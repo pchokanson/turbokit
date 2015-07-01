@@ -16,8 +16,8 @@ from PyFoam.Basics.STLFile import STLFile
 
 from Splines import *
 from FreeVortex import FreeVortex
-from BladeFactoryBase import BladeFactoryBase, BladeBase
-from BladeCapFactoryBase import BladeCapFactoryBase
+from BladeFactoryBase import BladeFactoryBase, BladeBase, BladeCompleterBase,\
+                             BladeEdgeCompleter, BladeHubCompleter
 import stl_writer
 
 def condense_face(face):
@@ -111,75 +111,10 @@ class FreeVortexBlades(FreeVortex):
 			self.faces.extend(blade.makeBladeFaces())
 			self.blades.append(blade)
 
-		for i in range(1, self.Z):
-			self.makeBladeSpan(self.blades[i-1].th_l, self.blades[i].th_t)
-		# Finally a little black magic to make the last inter-blade span work
-		# correctly.  The 2*pi offset ensures that they don't wrap the linear
-		# interpolation.
-		self.makeBladeSpan(self.blades[-1].th_l - 2 * np.pi, self.blades[0].th_t)
-
-		th_l = np.copy(self.th)
-		th_t = np.copy(self.th)
-		for s in range(0, self.r.shape[1]):
-			for m in range(0, self.r.shape[0]):
-				s_n = s / (self.r.shape[1]-1)
-				m_n = m / (self.r.shape[0]-1)
-				thickness_l = self.thickness_fn_l(m_n,s_n)
-				thickness_t = self.thickness_fn_t(m_n,s_n)
-				dth_l = (thickness_l) * math.sin(self.beta[m,s]) / self.r[m,s]
-				dth_t = -(thickness_t) * math.sin(self.beta[m,s]) / self.r[m,s]
-				th_l[m,s] += dth_l
-				th_t[m,s] += dth_t
-		self.th_l = th_l
-		self.th_t = th_t
-
-		# Make the actual mesh
-		for i in range(self.Z):
-			# For each blade
-			th_i = 2 * math.pi * i / self.Z
-			th_next = 2 * math.pi * (i+1) / self.Z
-			#self.makeBlade(th_i, th_next)
-
-	# TODO: Move the makeMeshHub/Shroud functions to another class that can be
-	# more easily subclassed.
-	def makeMeshHub(self, points_inlet, points_outlet):
-		pass
-		# for j in range(self.interblade_faces):
-		# 	# Cap at inlet
-		# 	th_ma = np.linspace(th_l[0,0]+th_i,
-		# 	                    th_t[0,0]+th_next,
-		# 	                    num=self.interblade_faces+1)
-		# 	self.faces.append([rtz_to_xyz([self.r[0,0], th_ma[j]  , self.z[0,0]]),
-		# 	                   rtz_to_xyz([self.r[0,0], th_ma[j+1]  , self.z[0,0]]),
-		# 	                   rtz_to_xyz([0, 0, self.z[0,0]])])
-		# 	# Cap at outlet
-		# 	th_mb = np.linspace(th_l[-1,0]+th_i,
-		# 	                    th_t[-1,0]+th_next,
-		# 	                    num=self.interblade_faces+1)
-		# 	self.faces.append([rtz_to_xyz([self.r[-1,0], th_mb[j+1]  , self.z[-1,0]]),
-		# 	                   rtz_to_xyz([self.r[-1,0], th_mb[j]  , self.z[-1,0]]),
-		# 	                   rtz_to_xyz([0, 0, self.z[-1,0]])])
-
-	def makeMeshShroud(self, points_inlet, points_outlet):
-		pass
-
-
-	def makeBladeSpan(self, th_l0, th_t1):
-		"""Given the leading edge profile of the current blade, and the trailing
-		edge of the next blade, create the junction between them."""
-		for m in range(1, self.r.shape[0]):
-
-			# Faces between blades
-			# theta points on upstream/downstream side of each face
-			th_ma = np.linspace(th_l0[m,0], th_t1[m,0], num=self.interblade_faces+1)
-			th_mb = np.linspace(th_l0[m-1,0], th_t1[m-1,0], num=self.interblade_faces+1)
-			for j in range(self.interblade_faces):
-				# We want to produce a mesh that interpolates between th_l[m0,0]+th_i and th_t[m0,0]+th_next
-				# and the same for m0
-				self.faces.append([rtz_to_xyz([self.r[m-1,0], th_mb[j]  , self.z[m-1,0]]),
-				                   rtz_to_xyz([self.r[m  ,0], th_ma[j]  , self.z[m  ,0]]),
-				                   rtz_to_xyz([self.r[m  ,0], th_ma[j+1], self.z[m  ,0]]),
-				                   rtz_to_xyz([self.r[m-1,0], th_mb[j+1], self.z[m-1,0]])])
+		self.hubCompleter = BladeHubCompleter(self.blades, self.r, self.z, 0)
+		self.faces.extend(self.hubCompleter.faces)
+		self.shroudCompleter = BladeEdgeCompleter(self.blades, self.r, self.z, 1)
+		self.faces.extend(self.shroudCompleter.faces)
 
 	def writeStlMesh(self, outfilename):
 		"""Write out an STL file from the face data."""
